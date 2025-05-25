@@ -1,50 +1,52 @@
+from rclpy.duration import Duration
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from turtlesim.msg import Pose
 from turtlesim.srv import SetPen
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 import py_trees
 import time
-from bt_robot.langchain_planner import get_plan
+from bt_node.langchain_planner import get_plan
 import json
 
 # move pose callback to check obstacle
 # have a separate node for turning instead of moving forward
 
 class MoveForward(py_trees.behaviour.Behaviour):
-    def __init__(self, node: Node, name="MoveForward", speed=0.5, duration=2.0):
+    def __init__(self, node: Node, name="MoveForward", speed=0.5, duration=3.0):
         super(MoveForward, self).__init__(name)
         self.node = node
-        self.duration = duration
         self.speed = speed
-        self.x = 1.0
-        self.z = 0.0
+        self.duration = duration
+        self._cmd_vel_pub = self.node.create_publisher(Twist, "/mobile_base_controller/cmd_vel_unstamped", 10)
         self._start_time = None
-
-    def setup(self, timeout =10):
-        self.publisher = self.node.create_publisher(Twist, '/cmd_vel', 10)
-        return True
+        self._timer = None
 
     def initialise(self):
-        self._start_time = self.node.get_clock().now().seconds_nanoseconds()[0]
+        self._start_time = time.time()
 
-    def update(self):
-        now = self.node.get_clock().now().seconds_nanoseconds()[0]
-        elapsed = now - self._start_time
-
-        self.node.get_logger().info(f"MoveForward: elapsed time = {elapsed} seconds")
-        if elapsed < self.duration:
+        def publish_twist():
             twist = Twist()
             twist.linear.x = self.speed
-            twist.angular.z = 0.0
-            self.publisher.publish(twist)
-            return py_trees.common.Status.RUNNING
-        else:
-            # stop the robot
-            self.publisher.publish(Twist())
-            self.node.get_logger().info("MoveForward completed")
+            self._cmd_vel_pub.publish(twist)
+
+        # Start a timer at 20Hz
+        self._timer = self.node.create_timer(0.05, publish_twist)
+
+    def update(self):
+        if time.time() - self._start_time >= self.duration:
+            print("MoveForward: Duration reached, stopping.")
             return py_trees.common.Status.SUCCESS
-        
+        return py_trees.common.Status.RUNNING
+
+    def terminate(self, new_status):
+        # Stop publishing and stop the robot
+        if self._timer is not None:
+            self._timer.cancel()
+        stop = Twist()
+        self._cmd_vel_pub.publish(stop)
+
 class Condition_CheckInBounds(py_trees.behaviour.Behaviour):
     def __init__(self, node: Node, name="Condition_CheckInBounds"):
         super(Condition_CheckInBounds, self).__init__(name)
@@ -69,23 +71,34 @@ class TurnAround(py_trees.behaviour.Behaviour):
     def __init__(self, node: Node, name="TurnAround"):
         super().__init__(name)
         self.node = node
-        self.publisher = node.create_publisher(Twist, '/turtle1/cmd_vel', 10)
-        self.start_time = None
+        self.angular_speed = 1.0  # radians per second
+        self.duration = 3.14 / self.angular_speed
+        self._start_time = None
+        self._cmd_vel_pub = self.node.create_publisher(Twist, "/mobile_base_controller/cmd_vel_unstamped", 10)
+        self._timer = None
 
     def initialise(self):
-        self.start_time = time.time()
+        self._start_time = time.time()
+
+        def publish_twist():
+            twist = Twist()
+            twist.linear.x = 0.0
+            twist.angular.z = self.angular_speed
+            self._cmd_vel_pub.publish(twist)
+
+        self._timer = self.node.create_timer(0.05, publish_twist)
 
     def update(self):
-        msg = Twist()
-        msg.linear.x = 0.0
-        msg.angular.z = 2.0  # Turn rate
-
-        self.publisher.publish(msg)
-
-        if time.time() - self.start_time > 1.6:  # ~180° at z=2.0
+        if time.time() - self._start_time >= self.duration:
+            print("TurnAround: Duration reached, stopping.")
             return py_trees.common.Status.SUCCESS
-        else:
-            return py_trees.common.Status.RUNNING
+        return py_trees.common.Status.RUNNING
+
+    def terminate(self, new_status):
+        if self._timer is not None:
+            self._timer.cancel()
+        stop = Twist()
+        self._cmd_vel_pub.publish(stop)
         
 class RotateLeft(py_trees.behaviour.Behaviour):
     def __init__(self, node: Node, name="RotateLeft"):
@@ -228,21 +241,43 @@ class ChangePenColor(py_trees.behaviour.Behaviour):
 
         return self.status_result
 
+class LookAround(py_trees.behaviour.Behaviour):
+    def __init__(self, node: Node, name="LookAround"):
+        super().__init__(name)
+        self.node = node
+        self.publisher = self.node.create_publisher(JointTrajectory, '/head_controller/joint_trajectory', 10)
+        self.executed = False
+        self.start_time = None
 
+    def initialise(self):
+        self.executed = False
+        self.start_time = time.time()
+
+    def update(self):
+        if not self.executed:
+            traj = JointTrajectory()
+            traj.joint_names = ['head_1_joint', 'head_2_joint']
+            traj.points = [
+                JointTrajectoryPoint(positions=[-1.2, 0.0], time_from_start=Duration(seconds=2.0).to_msg()),
+                JointTrajectoryPoint(positions=[0.0, 0.0], time_from_start=Duration(seconds=4.0).to_msg()),
+                JointTrajectoryPoint(positions=[1.2, 0.0], time_from_start=Duration(seconds=6.0).to_msg()),
+                JointTrajectoryPoint(positions=[0.0, 0.0], time_from_start=Duration(seconds=8.0).to_msg())
+            ]
+            self.publisher.publish(traj)
+            self.executed = True
+            return py_trees.common.Status.RUNNING
+
+        # Wait until 8 seconds have passed
+        if time.time() - self.start_time >= 8.0:
+            return py_trees.common.Status.SUCCESS
+        else:
+            return py_trees.common.Status.RUNNING
 class BehaviorTreeRoot(Node):
     def __init__(self):
         super().__init__('bt_node')
         self.bt = self.create_behavior_tree()
-        self.bt.setup(timeout=10)
         self.get_logger().info("Behavior Tree Initialized")
         self.timer = self.create_timer(1.0, self.tick_tree)
-
-    def spin(self):
-        rate = self.create_rate(10)  # 10 Hz
-        while rclpy.ok():
-            self.bt.tick()
-            rclpy.spin_once(self)
-            rate.sleep()
         
     # def create_behavior_tree(self):
     #     root = py_trees.composites.Selector(name="StayInBoundsOrTurn", memory=True)
@@ -264,9 +299,9 @@ class BehaviorTreeRoot(Node):
         # root.add_children([move_seq, turn_seq])
         # return py_trees.trees.BehaviourTree(root)
 
-    def create_behavior_tree(self):
+    def bcreate_behavior_tree(self):
         root = py_trees.composites.Sequence(name="RootSequence", memory=True)
-        root.add_children([MoveForward(self)])
+        root.add_children([MoveForward(self), TurnAround(self)])
 
         return py_trees.trees.BehaviourTree(root)
 
@@ -278,7 +313,9 @@ class BehaviorTreeRoot(Node):
     
     def create_action_node(self, action_type, args=None):
 
-        if action_type == "MoveForward":
+        if action_type == "TurnAround":
+            return TurnAround(self)
+        elif action_type == "MoveForward":
             return MoveForward(self)
         elif action_type == "RotateLeft":
             return RotateLeft(self)
@@ -289,7 +326,7 @@ class BehaviorTreeRoot(Node):
         
         return MoveForward(self)
 
-    def bcreate_behavior_tree(self):
+    def create_behavior_tree(self):
         plan = get_plan()
         print(plan)
         d = json.loads(plan)
@@ -298,7 +335,7 @@ class BehaviorTreeRoot(Node):
         root = self.create_behavior_tree_node(d)
         return py_trees.trees.BehaviourTree(root)    
 
-    def bcreate_behavior_tree_node(self, d):
+    def create_behavior_tree_node(self, d):
         root = None
         if not isinstance(d, dict):
             return None
@@ -327,6 +364,14 @@ class BehaviorTreeRoot(Node):
                     false_child.add_child(node)
 
             root.add_children([true_child, false_child])
+            return root
+        
+        elif d["type"] == "Sequence":
+            root = py_trees.composites.Sequence(name="Sequence", memory=True)
+            for child in d.get("true", []):
+                node = self.create_behavior_tree_node(child)
+                if node is not None:
+                    root.add_child(node)
             return root
 
         args = d.get("args", None)

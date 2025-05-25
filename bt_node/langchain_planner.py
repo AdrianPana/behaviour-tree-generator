@@ -17,10 +17,11 @@ template="""
     {actions}
 
     Rules:
+    - It is implied that the robot will execute this plan again and again. Do not include any phrases, comments, or notation indicating repetition, loops, or indefinite execution. Your output must be only the actions exactly as listed, with no additional explanation, comments, or repeated patterns.
     - Only use the exact actions listed above. **Do not invent, assume, or guess any new actions.**
     - The actions have the **exact** effects as listed in the prompt. Do not assume any additional effects or side effects.
     - If an action is **not** explicitly listed in `{actions}`, it **must not** appear in the output. This includes helper functions, sensors, or derived logic.
-    - You may use `if/else` statements to control flow, but you may **not** use single-branch `if` statements, loops (e.g. `while`, `for`) or jumps (e.g., `break`, `continue`, `goto`).
+    - You may use `if/else` statements to control flow if you see fit, but you may **not** use single-branch `if` statements, loops (e.g. `while`, `for`) or jumps (e.g., `break`, `continue`, `goto`).
     - If statements should check one condition at a time, `and` and `or` are not allowed.
     - If you are unsure how to proceed without unlisted actions, **output nothing**. Do not attempt to create or improvise new actions.
     - The output must contain **only** the plan, with no additional text or explanation, in a pseudocode format.
@@ -32,24 +33,33 @@ template="""
         ScanArea
         MoveForward
 
-    Valid example (uses only listed actions):
-        if Condition_CheckInBounds
-            ChangePenColor(0, 255, 0)
-            MoveForward
-        else
-            RotateLeft
-            MoveForward
+    Invalid example (mentions repetition explicitly):
+        MoveForward
+        TurnAround
+        ... (Repeat indefinitely)
+
+    Valid example (uses only listed actions and does not mention repetition):
+        MoveForward
+        TurnAround
         """
+    # Valid example (uses only listed actions):
+    #     if Condition_CheckInBounds
+    #         ChangePenColor(0, 255, 0)
+    #         MoveForward
+    #     else
+    #         RotateLeft
+    #         MoveForward
  
-situation = "Mark the out of bounds areas with red."
+situation = "Patrol the room."
 
 actions = """
     - MoveForward # Moves the robot forward a set distance.
-    - Condition_CheckInBounds # Returns SUCCESS if the robot's position is in bounds, FAILURE if out of bounds.
-    - RotateLeft # Rotates the robot to the left in place by 180 degrees. This action only changes the robot's orientation, not its position.
-    - ChangePenColorCyclic # Changes the trail color in a cyclic fashion from RED to GREEN to BLUE and to RED again and so on. This action only has a visual effect and does not affect the robot's position or orientation.
-    - ChangePenColor(r, g, b) # Changes the trail color to the specified RGB values given as parameters. This action only has a visual effect and does not affect the robot's position or orientation.
+    - TurnAround # Rotates the robot to face the opposite direction in place. This action only changes the robot's orientation, not its position.
     """
+    # - Condition_CheckInBounds # Returns SUCCESS if the robot's position is in bounds, FAILURE if out of bounds.
+    # - RotateLeft # Rotates the robot to the left in place by 180 degrees. This action only changes the robot's orientation, not its position.
+    # - ChangePenColorCyclic # Changes the trail color in a cyclic fashion from RED to GREEN to BLUE and to RED again and so on. This action only has a visual effect and does not affect the robot's position or orientation.
+    # - ChangePenColor(r, g, b) # Changes the trail color to the specified RGB values given as parameters. This action only has a visual effect and does not affect the robot's position or orientation.
     # - Condition_HasKey # Returns SUCCESS if the robot has a key, FAILURE if it does not.
     # - Condition_DoorIsLocked # Returns SUCCESS if the door is locked, FAILURE if it is not.
     # - UnlockDoor # Unlocks a door if the robot has a key. This action only has an effect if the robot has a key and the door is locked.
@@ -62,27 +72,29 @@ actions = """
     # - RemindToTakeMedicine # Reminds the person to take medicine. This action only has an effect if there is a person in the same room as the robot.
     # - EnterRoom # Enters the room if the robot is at the door and the door is open. This action only has an effect if the robot is at a door and the door is not open.
 
+# plan_to_json_template = """
+#     {plan}
+
+#     Using the generated plan, convert it into a YAML format that can be used to build a behaviour tree.
+
+#     Selector and Sequence nodes should be represented as objects with a "type" key set to "Selector" or "Sequence", respectively, and "children".
+#     Action nodes should be represented as objects with a "type" key set to the action name, and no children.
+#     Condition nodes should be represented as objects with a "type" key set to the condition name, and two keys, "success"/"failure" that contain the children that should be run in each case.
+#     Action and conidition nodes may also have a "args" key, which is a list of arguments that should be passed to the action or condition. It is not mandatory for the key to exist.
+
+#     Please make sure to use the same names for the nodes as in the plan, and provide a valid JSON output, with no additional text.
+#     """
+
 plan_to_json_template = """
-    {plan}
-
-    Using the generated plan, convert it into a YAML format that can be used to build a behaviour tree.
-
-    Selector and Sequence nodes should be represented as objects with a "type" key set to "Selector" or "Sequence", respectively, and "children".
-    Action nodes should be represented as objects with a "type" key set to the action name, and no children.
-    Condition nodes should be represented as objects with a "type" key set to the condition name, and two keys, "success"/"failure" that contain the children that should be run in each case.
-    Action and conidition nodes may also have a "args" key, which is a list of arguments that should be passed to the action or condition. It is not mandatory for the key to exist.
-
-    Please make sure to use the same names for the nodes as in the plan, and provide a valid JSON output, with no additional text.
-    """
-
-plan_to_yaml_template = """
     {plan}
     Using the generated plan, convert it into a JSON format.
     Each JSON element should be composed of a type (the name of the action or condition), a true key (for the if brach) and a false key (for the else branch).
     The contents of the true and false keys are lists built recursively just like the root node. If any of the lists are empty, omit the key. Do not provide empty objects (so no `{{}}`).
+    If there is no suitable condition to start as a root, use a "type" key set to "Sequence", and put all the actions that are on the same level in the "true" key.
     I only need you to parse the plan and convert from pseudocode to JSON. You don't have to do any other processing or logic, don't add any additional actions and don't remove anything.
     Please make sure to use the same names for the nodes as in the plan.
-    Output only the converted JSON, no other text, not even pointing out that this is a JSON.
+    Output only the converted JSON, no other text or comments, not even pointing out that this is a JSON.
+    Remove any comments. they are not allowed in a JSON file and will break my parsing algorithm.
 
     For example:
         if Condition_CheckInBounds
@@ -122,12 +134,12 @@ def get_plan():
     prompt = PromptTemplate(input_variables=["situation", "actions"], 
         template=template)
 
-    yaml = PromptTemplate(template=plan_to_yaml_template, input_variables=["plan"])
+    yaml = PromptTemplate(template=plan_to_json_template, input_variables=["plan"])
     
     chain = prompt | llm
     second_chain = yaml | llm
 
-    # Test the decision
+    # # Test the decision
     # plan = chain.invoke({
     #     "situation": situation,
     #     "actions": actions
