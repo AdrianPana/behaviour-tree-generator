@@ -21,6 +21,7 @@ setup(
     entry_points={
         'console_scripts': [
             "bt_node = bt_node.behaviour_tree:main",
+            "simple_person_detector = bt_node.perception:main",
         ],
     },
 )

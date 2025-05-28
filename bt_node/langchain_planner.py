@@ -35,27 +35,28 @@ template="""
 
     Invalid example (mentions repetition explicitly):
         MoveForward
-        TurnAround
+        RotateLeft
         ... (Repeat indefinitely)
 
-    Valid example (uses only listed actions and does not mention repetition):
+    Valid example (uses only listed actions and does not mention repetition, also provides a stop):
         MoveForward
-        TurnAround
+        RotateLeft
+    
+    Valid example (uses only listed actions, in this case we also use conditions):
+        if Condition_PersonDetected
+            MoveForward
+        else
+            RotateLeft
         """
-    # Valid example (uses only listed actions):
-    #     if Condition_CheckInBounds
-    #         ChangePenColor(0, 255, 0)
-    #         MoveForward
-    #     else
-    #         RotateLeft
-    #         MoveForward
  
-situation = "Patrol the room."
+situation = "Come sit next to me."
 
 actions = """
     - MoveForward # Moves the robot forward a set distance.
-    - TurnAround # Rotates the robot to face the opposite direction in place. This action only changes the robot's orientation, not its position.
+    - RotateLeft # Rotates the robot by approximately 90 degrees to the left. This action only changes the robot's orientation, not its position.
+    - Condition_PersonDetected # Returns SUCCESS if the robot detects a person in front of him.
     """
+    # - Wait # Stops the robot when it has reached its goal.
     # - Condition_CheckInBounds # Returns SUCCESS if the robot's position is in bounds, FAILURE if out of bounds.
     # - RotateLeft # Rotates the robot to the left in place by 180 degrees. This action only changes the robot's orientation, not its position.
     # - ChangePenColorCyclic # Changes the trail color in a cyclic fashion from RED to GREEN to BLUE and to RED again and so on. This action only has a visual effect and does not affect the robot's position or orientation.
@@ -72,19 +73,6 @@ actions = """
     # - RemindToTakeMedicine # Reminds the person to take medicine. This action only has an effect if there is a person in the same room as the robot.
     # - EnterRoom # Enters the room if the robot is at the door and the door is open. This action only has an effect if the robot is at a door and the door is not open.
 
-# plan_to_json_template = """
-#     {plan}
-
-#     Using the generated plan, convert it into a YAML format that can be used to build a behaviour tree.
-
-#     Selector and Sequence nodes should be represented as objects with a "type" key set to "Selector" or "Sequence", respectively, and "children".
-#     Action nodes should be represented as objects with a "type" key set to the action name, and no children.
-#     Condition nodes should be represented as objects with a "type" key set to the condition name, and two keys, "success"/"failure" that contain the children that should be run in each case.
-#     Action and conidition nodes may also have a "args" key, which is a list of arguments that should be passed to the action or condition. It is not mandatory for the key to exist.
-
-#     Please make sure to use the same names for the nodes as in the plan, and provide a valid JSON output, with no additional text.
-#     """
-
 plan_to_json_template = """
     {plan}
     Using the generated plan, convert it into a JSON format.
@@ -93,6 +81,7 @@ plan_to_json_template = """
     If there is no suitable condition to start as a root, use a "type" key set to "Sequence", and put all the actions that are on the same level in the "true" key.
     I only need you to parse the plan and convert from pseudocode to JSON. You don't have to do any other processing or logic, don't add any additional actions and don't remove anything.
     Please make sure to use the same names for the nodes as in the plan.
+    You may only have "type", "true", "false" and "args" keys in the JSON objects. **Do not invent, assume, or guess any new keys.** If a key is **not** explicitly listed in "type", "true", "false" and "args", it **must not** appear in the output.
     Output only the converted JSON, no other text or comments, not even pointing out that this is a JSON.
     Remove any comments. they are not allowed in a JSON file and will break my parsing algorithm.
 
