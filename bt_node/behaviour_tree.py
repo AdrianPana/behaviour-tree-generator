@@ -5,7 +5,7 @@ from bt_node.langchain_planner import get_plan
 import json
 from bt_node.bt_nodes import MoveForward, LookAround, Condition_PersonDetected, NavigateTo, Wait
 from bt_node.legacy_nodes import RotateLeft, TurnAround, ChangePenColor, Condition_CheckInBounds
-from bt_node.config import rooms
+from bt_node.config import rooms, Room
 
 class BehaviorTreeRoot(Node):
     def __init__(self):
@@ -17,13 +17,21 @@ class BehaviorTreeRoot(Node):
     def create_behavior_tree(self):
         # root = py_trees.composites.Selector(name="RootSelector", memory=True)
 
-        # root = py_trees.composites.Sequence(name="Sequence", memory=True)
+        root = py_trees.composites.Sequence(name="Sequence", memory=True)
+
+        look = LookAround(self)
+        detect = Condition_PersonDetected(self)
+
+        policy=py_trees.common.ParallelPolicy.SuccessOnSelected(children=[detect])
+        node = py_trees.composites.Parallel(name="Parallel", policy=policy)
+        node.add_children([look, detect])
+
+        root.add_child(node)
+        root.add_child(NavigateTo(self, x=7.0, y=7.0))
 
         # for roomidx, coords in rooms.items():
         #     root.add_child(NavigateTo())
 
-        coords = rooms[6]
-        root = NavigateTo(self, x=coords[1], y=coords[0])
 
         return py_trees.trees.BehaviourTree(root)
 
@@ -37,8 +45,11 @@ class BehaviorTreeRoot(Node):
     
     def create_action_node(self, action_type, args=None):
 
-        if action_type == "Wait":
-            return Wait(self)
+        if action_type == "NavigateTo" and args is not None and len(args) == 1:
+            room_name = args[0]
+            coords = rooms[Room[room_name].value]
+            print(coords)
+            return NavigateTo(self, x=coords[1], y=coords[0])
         elif action_type == "TurnAround":
             return TurnAround(self)
         elif action_type == "MoveForward":
@@ -61,7 +72,7 @@ class BehaviorTreeRoot(Node):
         root = self.create_behavior_tree_node(d)
         return py_trees.trees.BehaviourTree(root)    
 
-    def bcreate_behavior_tree_node(self, d):
+    def create_behavior_tree_node(self, d):
         root = None
         if not isinstance(d, dict):
             return None

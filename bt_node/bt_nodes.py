@@ -3,6 +3,7 @@ from rclpy.node import Node
 import py_trees
 from geometry_msgs.msg import Twist, PoseStamped
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from control_msgs.action import FollowJointTrajectory
 from std_msgs.msg import Bool
 from rclpy.duration import Duration
 from rclpy.action import ActionClient
@@ -56,33 +57,36 @@ class MoveForward(py_trees.behaviour.Behaviour):
 
 
 class LookAround(py_trees.behaviour.Behaviour):
-    def __init__(self, node: Node, name="LookAround"):
+    def __init__(self, node, name="LookAround"):
         super().__init__(name)
         self.node = node
-        self.publisher = self.node.create_publisher(JointTrajectory, '/head_controller/joint_trajectory', 10)
-        self.executed = False
-        self.start_time = None
+        self._action_client = ActionClient(node, FollowJointTrajectory, '/head_controller/follow_joint_trajectory')
+        self._goal_handle = None
+        self._sent = False
 
     def initialise(self):
-        self.executed = False
-        self.start_time = time.time()
+        self._sent = False
+        self._goal_handle = None
 
     def update(self):
-        if not self.executed:
-            traj = JointTrajectory()
-            traj.joint_names = ['head_1_joint', 'head_2_joint']
-            traj.points = [
-                JointTrajectoryPoint(positions=[-1.2, 0.0], time_from_start=Duration(seconds=2.0).to_msg()),
-                JointTrajectoryPoint(positions=[0.0, 0.0], time_from_start=Duration(seconds=4.0).to_msg()),
-                JointTrajectoryPoint(positions=[1.2, 0.0], time_from_start=Duration(seconds=6.0).to_msg()),
+        if not self._sent:
+            if not self._action_client.wait_for_server(timeout_sec=1.0):
+                print("Look around...")
+                return py_trees.common.Status.FAILURE
+
+
+            goal_msg = FollowJointTrajectory.Goal()
+            goal_msg.trajectory.joint_names = ['head_1_joint', 'head_2_joint']
+            goal_msg.trajectory.points = [
+                JointTrajectoryPoint(positions=[-2.0, 0.0], time_from_start=Duration(seconds=2.0).to_msg()),
+                JointTrajectoryPoint(positions=[2.0, 0.0], time_from_start=Duration(seconds=5.0).to_msg()),
                 JointTrajectoryPoint(positions=[0.0, 0.0], time_from_start=Duration(seconds=8.0).to_msg())
             ]
-            self.publisher.publish(traj)
-            self.executed = True
+            self._action_client.send_goal_async(goal_msg)
+            self._sent = True
             return py_trees.common.Status.RUNNING
 
-        # Wait until 8 seconds have passed
-        if time.time() - self.start_time >= 8.0:
+        if self._goal_handle and self._goal_handle.status == GoalStatus.STATUS_SUCCEEDED:
             return py_trees.common.Status.SUCCESS
         else:
             return py_trees.common.Status.RUNNING
