@@ -3,68 +3,57 @@ from rclpy.node import Node
 import py_trees
 from bt_node.langchain_planner import get_plan
 import json
-from bt_node.bt_nodes import MoveForward, LookAround, Condition_PersonDetected, NavigateTo, Wait
-from bt_node.legacy_nodes import RotateLeft, TurnAround, ChangePenColor, Condition_CheckInBounds
-from bt_node.config import rooms, Room
+from bt_node.bt_nodes import Condition_PersonFound, NavigateTo, \
+Wait, Condition_PersonDetected, Notify, Condition_FaceRecognized, \
+FindPerson 
+from bt_node.legacy_nodes import TurnAround, ChangePenColor, MoveForward
+from bt_node.config import Config
 
 class BehaviorTreeRoot(Node):
-    def __init__(self):
+    def __init__(self, plan=None):
         super().__init__('bt_node')
-        self.bt = self.create_behavior_tree()
+        self.plan = plan
+        if self.plan is not None:
+            self.bt = self.create_behavior_tree()
+        else:
+            self.bt = self.bcreate_behavior_tree()
         self.get_logger().info("Behavior Tree Initialized")
         self.timer = self.create_timer(1.0, self.tick_tree)
+        self.done = False
 
-    def create_behavior_tree(self):
-        # root = py_trees.composites.Selector(name="RootSelector", memory=True)
+    def bcreate_behavior_tree(self):
+        root = py_trees.composites.Sequence(name="RootSequence", memory=True)
 
-        root = py_trees.composites.Sequence(name="Sequence", memory=True)
-
-        look = LookAround(self)
-        detect = Condition_PersonDetected(self)
-
-        policy=py_trees.common.ParallelPolicy.SuccessOnSelected(children=[detect])
-        node = py_trees.composites.Parallel(name="Parallel", policy=policy)
-        node.add_children([look, detect])
-
-        root.add_child(node)
-        root.add_child(NavigateTo(self, x=7.0, y=7.0))
-
-        # for roomidx, coords in rooms.items():
-        #     root.add_child(NavigateTo())
-
+        root.add_child(FindPerson(self, person="Bob"))
+        root.add_child(Notify(self, "Found Bob!"))
 
         return py_trees.trees.BehaviourTree(root)
 
-    def create_condition_node(self, condition_type):
-        if condition_type == "Condition_CheckInBounds":
-            return Condition_CheckInBounds(self)
-        elif condition_type == "Condition_PersonDetected":
+    def create_condition_node(self, condition_type, args=None):
+        if condition_type == "Condition_PersonDetected":
             return Condition_PersonDetected(self)
-        
+        elif condition_type == "Condition_PersonFound":
+            return Condition_PersonFound(self)
+        elif condition_type == "Condition_FaceRecognized" and args is not None and len(args) == 1:
+            return Condition_FaceRecognized(self, person=args[0])
+            
         return Condition_PersonDetected(self)
     
     def create_action_node(self, action_type, args=None):
 
         if action_type == "NavigateTo" and args is not None and len(args) == 1:
-            room_name = args[0]
-            coords = rooms[Room[room_name].value]
-            print(coords)
-            return NavigateTo(self, x=coords[1], y=coords[0])
+            return NavigateTo(self, room_id=Config.Room[args[0]])
         elif action_type == "TurnAround":
             return TurnAround(self)
-        elif action_type == "MoveForward":
-            return MoveForward(self)
-        elif action_type == "RotateLeft":
-            return RotateLeft(self)
-        elif action_type == "LookAround":
-            return LookAround(self)
-        elif action_type == "ChangePenColor" and args is not None and len(args) == 3:
-            return ChangePenColor(self, args[0], args[1], args[2])
-        
+        elif action_type == "Notify" and args is not None and len(args) == 1:
+            return Notify(self, args[0])
+        elif action_type == "FindPerson" and args is not None and len(args) == 1:
+            return FindPerson(self, person=args[0])
+
         return Wait(self)
 
-    def bcreate_behavior_tree(self):
-        plan = get_plan()
+    def create_behavior_tree(self):
+        plan = self.plan
         print(plan)
         d = json.loads(plan)
         print(json.dumps(d, indent=4))
@@ -85,7 +74,8 @@ class BehaviorTreeRoot(Node):
             true_child = py_trees.composites.Sequence(name="True Sequence", memory=True)
             false_child = py_trees.composites.Sequence(name="False Sequence", memory=True)
 
-            node = self.create_condition_node(d["type"])
+            args = d.get("args", None)
+            node = self.create_condition_node(d["type"], args)
             true_child.add_child(node)
 
             for child in d.get("true", []):
@@ -117,11 +107,21 @@ class BehaviorTreeRoot(Node):
 
     def tick_tree(self):
         self.bt.tick()
+        if self.bt.root.status == py_trees.common.Status.SUCCESS:
+            self.get_logger().info("Behavior Tree returned successfully")
+            self.timer.cancel()
+            self.done = True
+            self.timer.cancel()
 
 def main(args=None):
     rclpy.init(args=args)
     node = BehaviorTreeRoot()
-    rclpy.spin(node)
+
+    while rclpy.ok():
+        rclpy.spin_once(node, timeout_sec=0.1)
+        if getattr(node, 'done', False):
+            break
+
     node.destroy_node()
     rclpy.shutdown()
 

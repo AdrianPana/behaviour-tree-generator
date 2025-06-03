@@ -20,7 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            "bt_node = bt_node.behaviour_tree:main",
+            "controller = bt_node.controller:main",
+            # "bt_node = bt_node.behaviour_tree:main",
             "simple_person_detector = bt_node.perception:main",
         ],
     },
