@@ -20,7 +20,6 @@ def main(args=None):
             person = input("Who do you want to move? (Alice/Bob): ")
             for room in Config.Room:
                 print(f"{room.name} = {room.value}")
-
             room_id = input("Where do you want to move them? (0-6): ")
             # find enum element with value = 6
             

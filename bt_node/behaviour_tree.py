@@ -5,7 +5,7 @@ from bt_node.langchain_planner import get_plan
 import json
 from bt_node.bt_nodes import Condition_PersonFound, NavigateTo, \
 Wait, Condition_PersonDetected, Notify, Condition_FaceRecognized, \
-FindPerson 
+ExploreFindPerson 
 from bt_node.legacy_nodes import TurnAround, ChangePenColor, MoveForward
 from bt_node.config import Config
 
@@ -24,8 +24,8 @@ class BehaviorTreeRoot(Node):
     def bcreate_behavior_tree(self):
         root = py_trees.composites.Sequence(name="RootSequence", memory=True)
 
-        root.add_child(FindPerson(self, person="Bob"))
-        root.add_child(Notify(self, "Found Bob!"))
+        # root.add_child(ExploreFindPerson(self, person="Bob"))
+        root.add_child(Notify(self, "I am using the Notify node to communicate with others via speech bubble"))
 
         return py_trees.trees.BehaviourTree(root)
 
@@ -47,8 +47,8 @@ class BehaviorTreeRoot(Node):
             return TurnAround(self)
         elif action_type == "Notify" and args is not None and len(args) == 1:
             return Notify(self, args[0])
-        elif action_type == "FindPerson" and args is not None and len(args) == 1:
-            return FindPerson(self, person=args[0])
+        elif action_type == "ExploreFindPerson" and args is not None and len(args) == 1:
+            return ExploreFindPerson(self, person=args[0])
 
         return Wait(self)
 

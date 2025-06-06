@@ -145,12 +145,12 @@ class Condition_FaceRecognized(py_trees.behaviour.Behaviour):
             else:
                 self.node.get_logger().info(f"Person {self.person} not found in current room {Config.current_room}")
                 if self.person in Config.people_room_memory:
-                    del Config.people_room_memory[self.person]
+                    Config.people_room_memory[self.person] = None
                 self.status = py_trees.common.Status.FAILURE
         # Out target has moved to another room, we need to look for them, erase memory 
         else:
             if self.person in Config.people_room_memory:
-                del Config.people_room_memory[self.person]
+                Config.people_room_memory[self.person] = None
 
     def update(self):
         return self.status
@@ -215,7 +215,7 @@ class Notify(py_trees.behaviour.Behaviour):
         fg_marker.action = Marker.ADD
         fg_marker.pose.position.x = current_coords[0]
         fg_marker.pose.position.y = current_coords[1]
-        fg_marker.pose.position.z = 1.0  # just above background
+        fg_marker.pose.position.z = 5.0  # just above background
         fg_marker.pose.orientation.w = 1.0
         fg_marker.scale.z = 0.4
         fg_marker.color.a = 1.0
@@ -234,14 +234,14 @@ class Notify(py_trees.behaviour.Behaviour):
         bg_marker.action = Marker.ADD
         bg_marker.pose.position.x = current_coords[0]
         bg_marker.pose.position.y = current_coords[1]
-        bg_marker.pose.position.z = 0.0  # slightly behind text
+        bg_marker.pose.position.z = 4.0  # slightly behind text
         bg_marker.pose.orientation.w = 1.0
         bg_marker.scale.x = 0.5 * lines  # height
         bg_marker.scale.y = 10.0  # width
-        bg_marker.scale.z = 0.4  # depth
-        bg_marker.color.r = 1.0
-        bg_marker.color.g = 1.0
-        bg_marker.color.b = 1.0
+        bg_marker.scale.z = 0.2  # depth
+        bg_marker.color.r = 0.9
+        bg_marker.color.g = 0.9
+        bg_marker.color.b = 0.9
         bg_marker.color.a = 1.0  # semi-transparent
         # Publish both
         self.marker_publisher.publish(bg_marker)

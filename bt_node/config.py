@@ -26,7 +26,8 @@ class Config:
 
     people_room_memory = {
         "Alice": Room.OFFICE,
-        "Bob": Room.DINING_ROOM
+        # "Bob": Room.DINING_ROOM
+        "Bob": None
     }
 
     # this is the universal truth, does not change
